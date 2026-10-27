@@ -101,13 +101,14 @@ fn is_windows_packaged() -> Result<bool> {
 #[cfg(test)]
 mod tests {
    use super::*;
-   use test_case::test_case;
+   use rstest::rstest;
 
-   #[test_case("android", FsEnvironment::Android)]
-   #[test_case("ios", FsEnvironment::Ios)]
-   #[test_case("linux", FsEnvironment::Linux)]
-   #[test_case("macos", FsEnvironment::Macos)]
-   fn test_get_non_windows_fs_environment(os: &str, expected: FsEnvironment) {
+   #[rstest]
+   #[case::android("android", FsEnvironment::Android)]
+   #[case::ios("ios", FsEnvironment::Ios)]
+   #[case::linux("linux", FsEnvironment::Linux)]
+   #[case::macos("macos", FsEnvironment::Macos)]
+   fn test_get_non_windows_fs_environment(#[case] os: &str, #[case] expected: FsEnvironment) {
       assert_eq!(
          get_fs_environment_inner(os, || Err(
             Error::AttemptedDeterminingWindowsPackagingEnvironmentOnNonWindowsPlatform
@@ -117,9 +118,10 @@ mod tests {
       );
    }
 
-   #[test_case(false, FsEnvironment::Win32)]
-   #[test_case(true, FsEnvironment::WinPackaged)]
-   fn test_get_windows_fs_environment(is_packaged: bool, expected: FsEnvironment) {
+   #[rstest]
+   #[case::win32(false, FsEnvironment::Win32)]
+   #[case::win_packaged(true, FsEnvironment::WinPackaged)]
+   fn test_get_windows_fs_environment(#[case] is_packaged: bool, #[case] expected: FsEnvironment) {
       assert_eq!(
          get_fs_environment_inner("windows", || Ok(is_packaged)).unwrap(),
          expected

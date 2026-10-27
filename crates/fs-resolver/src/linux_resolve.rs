@@ -258,6 +258,7 @@ fn extract_value(rest: &str) -> &str {
 #[cfg(test)]
 mod tests {
    use super::*;
+   use rstest::rstest;
 
    #[cfg(target_os = "linux")]
    const BUNDLE_ID: &str = "com.example.app";
@@ -266,121 +267,67 @@ mod tests {
       PathBuf::from("/home/alice")
    }
 
-   #[test]
-   fn quoted_home_expansion() {
-      let c = r#"XDG_DESKTOP_DIR="$HOME/Desktop""#;
+   #[rstest]
+   #[case::quoted_home_expansion(
+      r#"XDG_DESKTOP_DIR="$HOME/Desktop""#,
+      "DESKTOP",
+      "/home/alice/Desktop"
+   )]
+   #[case::bare_home_value(r#"XDG_DOWNLOAD_DIR="$HOME""#, "DOWNLOAD", "/home/alice")]
+   #[case::absolute_path_value(r#"XDG_MUSIC_DIR="/mnt/media/music""#, "MUSIC", "/mnt/media/music")]
+   #[case::unquoted_value("XDG_PICTURES_DIR=$HOME/Pictures", "PICTURES", "/home/alice/Pictures")]
+   #[case::trailing_inline_comment(
+      r#"XDG_VIDEOS_DIR="$HOME/Videos" # my videos"#,
+      "VIDEOS",
+      "/home/alice/Videos"
+   )]
+   // $HOMEBASE must NOT expand as $HOME + "BASE/x"; treated as literal.
+   #[case::home_lookalike_prefix(
+      r#"XDG_TEMPLATES_DIR="$HOMEBASE/templates""#,
+      "TEMPLATES",
+      "$HOMEBASE/templates"
+   )]
+   #[case::leading_comments_and_blank_lines(
+      "# user-dirs.dirs\n\n  # comment\nXDG_PUBLICSHARE_DIR=\"$HOME/Public\"\n",
+      "PUBLICSHARE",
+      "/home/alice/Public"
+   )]
+   #[case::empty_value_skipped(
+      "XDG_MUSIC_DIR=\nXDG_MUSIC_DIR=\"$HOME/Music\"",
+      "MUSIC",
+      "/home/alice/Music"
+   )]
+   fn parse_user_dirs_resolves_value(
+      #[case] contents: &str,
+      #[case] key: &str,
+      #[case] expected: &str,
+   ) {
       assert_eq!(
-         parse_user_dirs(c, "DESKTOP", &home()),
-         Some(PathBuf::from("/home/alice/Desktop"))
+         parse_user_dirs(contents, key, &home()),
+         Some(PathBuf::from(expected))
       );
    }
 
-   #[test]
-   fn bare_home_value() {
-      let c = r#"XDG_DOWNLOAD_DIR="$HOME""#;
-      assert_eq!(
-         parse_user_dirs(c, "DOWNLOAD", &home()),
-         Some(PathBuf::from("/home/alice"))
-      );
-   }
-
-   #[test]
-   fn absolute_path_value() {
-      let c = r#"XDG_MUSIC_DIR="/mnt/media/music""#;
-      assert_eq!(
-         parse_user_dirs(c, "MUSIC", &home()),
-         Some(PathBuf::from("/mnt/media/music"))
-      );
-   }
-
-   #[test]
-   fn unquoted_value() {
-      let c = "XDG_PICTURES_DIR=$HOME/Pictures";
-      assert_eq!(
-         parse_user_dirs(c, "PICTURES", &home()),
-         Some(PathBuf::from("/home/alice/Pictures"))
-      );
-   }
-
-   #[test]
-   fn trailing_inline_comment() {
-      let c = r#"XDG_VIDEOS_DIR="$HOME/Videos" # my videos"#;
-      assert_eq!(
-         parse_user_dirs(c, "VIDEOS", &home()),
-         Some(PathBuf::from("/home/alice/Videos"))
-      );
-   }
-
-   #[test]
-   fn home_prefix_is_boundary_aware() {
-      // $HOMEBASE must NOT expand as $HOME + "BASE/x"; treated as literal.
-      let c = r#"XDG_TEMPLATES_DIR="$HOMEBASE/templates""#;
-      assert_eq!(
-         parse_user_dirs(c, "TEMPLATES", &home()),
-         Some(PathBuf::from("$HOMEBASE/templates"))
-      );
-   }
-
-   #[test]
-   fn skips_comments_and_blank_lines() {
-      let c = "# user-dirs.dirs\n\n  # comment\nXDG_PUBLICSHARE_DIR=\"$HOME/Public\"\n";
-      assert_eq!(
-         parse_user_dirs(c, "PUBLICSHARE", &home()),
-         Some(PathBuf::from("/home/alice/Public"))
-      );
-   }
-
-   #[test]
-   fn missing_key_returns_none() {
-      let c = r#"XDG_DESKTOP_DIR="$HOME/Desktop""#;
-      assert_eq!(parse_user_dirs(c, "DOWNLOAD", &home()), None);
-   }
-
-   #[test]
-   fn similar_key_does_not_match() {
-      // XDG_DESKTOP_DIRECTORY must not satisfy a lookup for DESKTOP.
-      let c = r#"XDG_DESKTOP_DIRECTORY="$HOME/Nope""#;
-      assert_eq!(parse_user_dirs(c, "DESKTOP", &home()), None);
-   }
-
-   #[test]
-   fn empty_value_skipped() {
-      let c = "XDG_MUSIC_DIR=\nXDG_MUSIC_DIR=\"$HOME/Music\"";
-      assert_eq!(
-         parse_user_dirs(c, "MUSIC", &home()),
-         Some(PathBuf::from("/home/alice/Music"))
-      );
+   #[rstest]
+   #[case::missing_key(r#"XDG_DESKTOP_DIR="$HOME/Desktop""#, "DOWNLOAD")]
+   // XDG_DESKTOP_DIRECTORY must not satisfy a lookup for DESKTOP.
+   #[case::similar_key(r#"XDG_DESKTOP_DIRECTORY="$HOME/Nope""#, "DESKTOP")]
+   fn parse_user_dirs_returns_none_when_key_is_absent(#[case] contents: &str, #[case] key: &str) {
+      assert_eq!(parse_user_dirs(contents, key, &home()), None);
    }
 
    #[cfg(target_os = "linux")]
-   #[test]
-   fn data_home_for_current_app_appends_bundle_identifier() {
-      let root = resolve_linux_path(&LinuxPath::DataHome, "").unwrap();
-      let path = resolve_linux_path(&LinuxPath::DataHomeForCurrentApp, BUNDLE_ID).unwrap();
-      assert_eq!(path, root.join(BUNDLE_ID));
-   }
-
-   #[cfg(target_os = "linux")]
-   #[test]
-   fn config_home_for_current_app_appends_bundle_identifier() {
-      let root = resolve_linux_path(&LinuxPath::ConfigHome, "").unwrap();
-      let path = resolve_linux_path(&LinuxPath::ConfigHomeForCurrentApp, BUNDLE_ID).unwrap();
-      assert_eq!(path, root.join(BUNDLE_ID));
-   }
-
-   #[cfg(target_os = "linux")]
-   #[test]
-   fn cache_home_for_current_app_appends_bundle_identifier() {
-      let root = resolve_linux_path(&LinuxPath::CacheHome, "").unwrap();
-      let path = resolve_linux_path(&LinuxPath::CacheHomeForCurrentApp, BUNDLE_ID).unwrap();
-      assert_eq!(path, root.join(BUNDLE_ID));
-   }
-
-   #[cfg(target_os = "linux")]
-   #[test]
-   fn state_home_for_current_app_appends_bundle_identifier() {
-      let root = resolve_linux_path(&LinuxPath::StateHome, "").unwrap();
-      let path = resolve_linux_path(&LinuxPath::StateHomeForCurrentApp, BUNDLE_ID).unwrap();
-      assert_eq!(path, root.join(BUNDLE_ID));
+   #[rstest]
+   #[case::data_home(LinuxPath::DataHome, LinuxPath::DataHomeForCurrentApp)]
+   #[case::config_home(LinuxPath::ConfigHome, LinuxPath::ConfigHomeForCurrentApp)]
+   #[case::cache_home(LinuxPath::CacheHome, LinuxPath::CacheHomeForCurrentApp)]
+   #[case::state_home(LinuxPath::StateHome, LinuxPath::StateHomeForCurrentApp)]
+   fn for_current_app_appends_bundle_identifier(
+      #[case] base_path: LinuxPath,
+      #[case] app_path: LinuxPath,
+   ) {
+      let base = resolve_linux_path(&base_path, "").unwrap();
+      let path = resolve_linux_path(&app_path, BUNDLE_ID).unwrap();
+      assert_eq!(path, base.join(BUNDLE_ID));
    }
 }

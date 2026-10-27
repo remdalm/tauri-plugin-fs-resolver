@@ -191,23 +191,21 @@ pub(crate) fn resolve_mac_path_inner(path: &MacPath, bundle_identifier: &str) ->
 // Platform-specific resolution tests; CI runs these on macos-latest (see .github/workflows/ci.yml).
 mod tests {
    use super::*;
+   use rstest::rstest;
    const BUNDLE_ID: &str = "com.example.app";
 
-   #[test]
-   fn caches_directory_for_current_app_appends_bundle_identifier() {
-      let base = resolve_mac_path(&MacPath::CachesDirectory, "").unwrap();
-      let path = resolve_mac_path(&MacPath::CachesDirectoryForCurrentApp, BUNDLE_ID).unwrap();
-      assert_eq!(path, base.join(BUNDLE_ID));
-   }
-
-   #[test]
-   fn application_support_directory_for_current_app_appends_bundle_identifier() {
-      let base = resolve_mac_path(&MacPath::ApplicationSupportDirectory, "").unwrap();
-      let path = resolve_mac_path(
-         &MacPath::ApplicationSupportDirectoryForCurrentApp,
-         BUNDLE_ID,
-      )
-      .unwrap();
+   #[rstest]
+   #[case::caches_directory(MacPath::CachesDirectory, MacPath::CachesDirectoryForCurrentApp)]
+   #[case::application_support_directory(
+      MacPath::ApplicationSupportDirectory,
+      MacPath::ApplicationSupportDirectoryForCurrentApp
+   )]
+   fn for_current_app_appends_bundle_identifier(
+      #[case] base_path: MacPath,
+      #[case] app_path: MacPath,
+   ) {
+      let base = resolve_mac_path(&base_path, "").unwrap();
+      let path = resolve_mac_path(&app_path, BUNDLE_ID).unwrap();
       assert_eq!(path, base.join(BUNDLE_ID));
    }
 }

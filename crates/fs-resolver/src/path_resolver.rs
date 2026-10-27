@@ -280,448 +280,253 @@ mod tests {
    use crate::Error;
    use crate::PlatformMapping;
    use crate::Win32Path;
+   use rstest::rstest;
 
-   const ENVIRONMENTS: [FsEnvironment; 6] = [
-      FsEnvironment::Android,
-      FsEnvironment::Ios,
-      FsEnvironment::Linux,
-      FsEnvironment::Macos,
-      FsEnvironment::Win32,
-      FsEnvironment::WinPackaged,
-   ];
+   // Fails to compile when FsEnvironment gets a new variant, as a reminder to add a case
+   // for it to each table below. Nothing checks that the tables have that case.
+   const _: fn(&FsEnvironment) = |environment| match environment {
+      FsEnvironment::Android
+      | FsEnvironment::Ios
+      | FsEnvironment::Linux
+      | FsEnvironment::Macos
+      | FsEnvironment::Win32
+      | FsEnvironment::WinPackaged => {}
+   };
 
-   #[test]
-   fn new_rejects_invalid_bundle_identifier() {
-      assert!(PathResolver::new(String::new()).is_err());
-      assert!(PathResolver::new("../escape".to_string()).is_err());
+   #[rstest]
+   #[case::empty("")]
+   #[case::leading_parent_dir("../escape")]
+   fn new_rejects_invalid_bundle_identifier(#[case] bundle_identifier: &str) {
+      assert_eq!(
+         PathResolver::new(bundle_identifier.to_string()).err(),
+         Some(Error::InvalidPath(format!(
+            "Bundle identifier must be a single safe path segment: {bundle_identifier}"
+         )))
+      );
    }
 
    #[test]
-   fn android_environment_rejects_other_environment_paths() {
-      let android_environment = FsEnvironment::Android;
+   fn resolve_android_accepts_android_environment() {
+      let resolver = create_test_resolver(FsEnvironment::Android);
+      let result = resolver.resolve_android(&AndroidPath::DataDir);
 
-      let android_resolver = create_test_resolver(FsEnvironment::Android);
+      assert_eq!(result.unwrap(), PathBuf::from("android/dataDir"));
+   }
 
-      let android_result = android_resolver.resolve_android(&AndroidPath::DataDir);
-      assert_eq!(android_result.unwrap(), PathBuf::from("android/dataDir"));
+   #[rstest]
+   #[case::ios(FsEnvironment::Ios)]
+   #[case::linux(FsEnvironment::Linux)]
+   #[case::macos(FsEnvironment::Macos)]
+   #[case::win32(FsEnvironment::Win32)]
+   #[case::win_packaged(FsEnvironment::WinPackaged)]
+   fn resolve_android_rejects_non_android_environments(#[case] environment: FsEnvironment) {
+      let resolver = create_test_resolver(environment.clone());
+      let result = resolver.resolve_android(&AndroidPath::DataDir);
 
-      let android_collection_result = android_resolver
-         .resolve_android_path_collection(&AndroidPathCollection::ExternalCacheDirs);
       assert_eq!(
-         android_collection_result.unwrap(),
+         result.unwrap_err(),
+         Error::IncorrectOS {
+            path: AndroidPath::DataDir.to_string(),
+            current_os: environment.to_string(),
+            expected_os: "android".to_string(),
+         }
+      );
+   }
+
+   #[test]
+   fn resolve_android_path_collection_accepts_android_environment() {
+      let resolver = create_test_resolver(FsEnvironment::Android);
+      let result =
+         resolver.resolve_android_path_collection(&AndroidPathCollection::ExternalCacheDirs);
+
+      assert_eq!(
+         result.unwrap(),
          vec![PathBuf::from("android/externalCacheDirs")]
       );
+   }
 
-      let ios_result = android_resolver.resolve_ios(&IosPath::DocumentDirectory);
+   #[rstest]
+   #[case::ios(FsEnvironment::Ios)]
+   #[case::linux(FsEnvironment::Linux)]
+   #[case::macos(FsEnvironment::Macos)]
+   #[case::win32(FsEnvironment::Win32)]
+   #[case::win_packaged(FsEnvironment::WinPackaged)]
+   fn resolve_android_path_collection_rejects_non_android_environments(
+      #[case] environment: FsEnvironment,
+   ) {
+      let resolver = create_test_resolver(environment.clone());
+      let result =
+         resolver.resolve_android_path_collection(&AndroidPathCollection::ExternalCacheDirs);
+
       assert_eq!(
-         ios_result.unwrap_err(),
+         result.unwrap_err(),
+         Error::IncorrectOS {
+            path: AndroidPathCollection::ExternalCacheDirs.to_string(),
+            current_os: environment.to_string(),
+            expected_os: "android".to_string(),
+         }
+      );
+   }
+
+   #[test]
+   fn resolve_ios_accepts_ios_environment() {
+      let resolver = create_test_resolver(FsEnvironment::Ios);
+      let result = resolver.resolve_ios(&IosPath::DocumentDirectory);
+
+      assert_eq!(result.unwrap(), PathBuf::from("ios/documentDirectory"));
+   }
+
+   #[rstest]
+   #[case::android(FsEnvironment::Android)]
+   #[case::linux(FsEnvironment::Linux)]
+   #[case::macos(FsEnvironment::Macos)]
+   #[case::win32(FsEnvironment::Win32)]
+   #[case::win_packaged(FsEnvironment::WinPackaged)]
+   fn resolve_ios_rejects_non_ios_environments(#[case] environment: FsEnvironment) {
+      let resolver = create_test_resolver(environment.clone());
+      let result = resolver.resolve_ios(&IosPath::DocumentDirectory);
+
+      assert_eq!(
+         result.unwrap_err(),
          Error::IncorrectOS {
             path: IosPath::DocumentDirectory.to_string(),
-            current_os: android_environment.to_string(),
+            current_os: environment.to_string(),
             expected_os: "ios".to_string(),
          }
       );
+   }
 
-      let linux_result = android_resolver.resolve_linux(&LinuxPath::DataHome);
+   #[test]
+   fn resolve_linux_accepts_linux_environment() {
+      let resolver = create_test_resolver(FsEnvironment::Linux);
+      let result = resolver.resolve_linux(&LinuxPath::DataHome);
+
+      assert_eq!(result.unwrap(), PathBuf::from("linux/dataHome"));
+   }
+
+   #[rstest]
+   #[case::android(FsEnvironment::Android)]
+   #[case::ios(FsEnvironment::Ios)]
+   #[case::macos(FsEnvironment::Macos)]
+   #[case::win32(FsEnvironment::Win32)]
+   #[case::win_packaged(FsEnvironment::WinPackaged)]
+   fn resolve_linux_rejects_non_linux_environments(#[case] environment: FsEnvironment) {
+      let resolver = create_test_resolver(environment.clone());
+      let result = resolver.resolve_linux(&LinuxPath::DataHome);
+
       assert_eq!(
-         linux_result.unwrap_err(),
+         result.unwrap_err(),
          Error::IncorrectOS {
             path: LinuxPath::DataHome.to_string(),
-            current_os: android_environment.to_string(),
+            current_os: environment.to_string(),
             expected_os: "linux".to_string(),
          }
       );
+   }
 
-      let mac_result = android_resolver.resolve_mac(&MacPath::ApplicationDirectory);
+   #[test]
+   fn resolve_mac_accepts_macos_environment() {
+      let resolver = create_test_resolver(FsEnvironment::Macos);
+      let result = resolver.resolve_mac(&MacPath::ApplicationDirectory);
+
+      assert_eq!(result.unwrap(), PathBuf::from("apple/applicationDirectory"));
+   }
+
+   #[rstest]
+   #[case::android(FsEnvironment::Android)]
+   #[case::ios(FsEnvironment::Ios)]
+   #[case::linux(FsEnvironment::Linux)]
+   #[case::win32(FsEnvironment::Win32)]
+   #[case::win_packaged(FsEnvironment::WinPackaged)]
+   fn resolve_mac_rejects_non_macos_environments(#[case] environment: FsEnvironment) {
+      let resolver = create_test_resolver(environment.clone());
+      let result = resolver.resolve_mac(&MacPath::ApplicationDirectory);
+
       assert_eq!(
-         mac_result.unwrap_err(),
+         result.unwrap_err(),
          Error::IncorrectOS {
             path: MacPath::ApplicationDirectory.to_string(),
-            current_os: android_environment.to_string(),
+            current_os: environment.to_string(),
             expected_os: "macos".to_string(),
          }
       );
+   }
 
-      let win32_result = android_resolver.resolve_win32(&Win32Path::LocalAppData);
+   #[rstest]
+   #[case::win32(FsEnvironment::Win32)]
+   #[case::win_packaged(FsEnvironment::WinPackaged)]
+   fn resolve_win32_accepts_windows_environments(#[case] environment: FsEnvironment) {
+      let resolver = create_test_resolver(environment);
+      let result = resolver.resolve_win32(&Win32Path::LocalAppData);
+
+      assert_eq!(result.unwrap(), PathBuf::from("win32/localAppData"));
+   }
+
+   #[rstest]
+   #[case::android(FsEnvironment::Android)]
+   #[case::ios(FsEnvironment::Ios)]
+   #[case::linux(FsEnvironment::Linux)]
+   #[case::macos(FsEnvironment::Macos)]
+   fn resolve_win32_rejects_non_windows_environments(#[case] environment: FsEnvironment) {
+      let resolver = create_test_resolver(environment.clone());
+      let result = resolver.resolve_win32(&Win32Path::LocalAppData);
+
       assert_eq!(
-         win32_result.unwrap_err(),
+         result.unwrap_err(),
          Error::IncorrectOS {
             path: Win32Path::LocalAppData.to_string(),
-            current_os: android_environment.to_string(),
+            current_os: environment.to_string(),
             expected_os: ["win32", "winpackaged"].join(", "),
          }
       );
-
-      let win_packaged_result = android_resolver
-         .resolve_windows_application_data(&WindowsApplicationDataPath::LocalFolder);
-      assert_eq!(
-         win_packaged_result.unwrap_err(),
-         Error::IncorrectOS {
-            path: WindowsApplicationDataPath::LocalFolder.to_string(),
-            current_os: android_environment.to_string(),
-            expected_os: "winpackaged".to_string(),
-         }
-      );
    }
 
    #[test]
-   fn ios_environment_rejects_other_environment_paths() {
-      let ios_environment = FsEnvironment::Ios;
-      let ios_resolver = create_test_resolver(FsEnvironment::Ios);
-
-      let android_result = ios_resolver.resolve_android(&AndroidPath::DataDir);
-      assert_eq!(
-         android_result.unwrap_err(),
-         Error::IncorrectOS {
-            path: AndroidPath::DataDir.to_string(),
-            current_os: ios_environment.to_string(),
-            expected_os: "android".to_string(),
-         }
-      );
-
-      let android_collection_result =
-         ios_resolver.resolve_android_path_collection(&AndroidPathCollection::ExternalCacheDirs);
-      assert_eq!(
-         android_collection_result.unwrap_err(),
-         Error::IncorrectOS {
-            path: AndroidPathCollection::ExternalCacheDirs.to_string(),
-            current_os: ios_environment.to_string(),
-            expected_os: "android".to_string(),
-         }
-      );
-
-      let ios_result = ios_resolver.resolve_ios(&IosPath::DocumentDirectory);
-      assert_eq!(ios_result.unwrap(), PathBuf::from("ios/documentDirectory"));
-
-      let linux_result = ios_resolver.resolve_linux(&LinuxPath::DataHome);
-      assert_eq!(
-         linux_result.unwrap_err(),
-         Error::IncorrectOS {
-            path: LinuxPath::DataHome.to_string(),
-            current_os: ios_environment.to_string(),
-            expected_os: "linux".to_string(),
-         }
-      );
-
-      let mac_result = ios_resolver.resolve_mac(&MacPath::ApplicationDirectory);
-      assert_eq!(
-         mac_result.unwrap_err(),
-         Error::IncorrectOS {
-            path: MacPath::ApplicationDirectory.to_string(),
-            current_os: ios_environment.to_string(),
-            expected_os: "macos".to_string(),
-         }
-      );
-
-      let win32_result = ios_resolver.resolve_win32(&Win32Path::LocalAppData);
-      assert_eq!(
-         win32_result.unwrap_err(),
-         Error::IncorrectOS {
-            path: Win32Path::LocalAppData.to_string(),
-            current_os: ios_environment.to_string(),
-            expected_os: ["win32", "winpackaged"].join(", "),
-         }
-      );
-
-      let win_packaged_result =
-         ios_resolver.resolve_windows_application_data(&WindowsApplicationDataPath::LocalFolder);
-      assert_eq!(
-         win_packaged_result.unwrap_err(),
-         Error::IncorrectOS {
-            path: WindowsApplicationDataPath::LocalFolder.to_string(),
-            current_os: ios_environment.to_string(),
-            expected_os: "winpackaged".to_string(),
-         }
-      );
-   }
-
-   #[test]
-   fn linux_environment_rejects_other_environment_paths() {
-      let linux_environment = FsEnvironment::Linux;
-      let linux_resolver = create_test_resolver(FsEnvironment::Linux);
-
-      let android_result = linux_resolver.resolve_android(&AndroidPath::DataDir);
-      assert_eq!(
-         android_result.unwrap_err(),
-         Error::IncorrectOS {
-            path: AndroidPath::DataDir.to_string(),
-            current_os: linux_environment.to_string(),
-            expected_os: "android".to_string(),
-         }
-      );
-
-      let android_collection_result =
-         linux_resolver.resolve_android_path_collection(&AndroidPathCollection::ExternalCacheDirs);
-      assert_eq!(
-         android_collection_result.unwrap_err(),
-         Error::IncorrectOS {
-            path: AndroidPathCollection::ExternalCacheDirs.to_string(),
-            current_os: linux_environment.to_string(),
-            expected_os: "android".to_string(),
-         }
-      );
-
-      let ios_result = linux_resolver.resolve_ios(&IosPath::DocumentDirectory);
-      assert_eq!(
-         ios_result.unwrap_err(),
-         Error::IncorrectOS {
-            path: IosPath::DocumentDirectory.to_string(),
-            current_os: linux_environment.to_string(),
-            expected_os: "ios".to_string(),
-         }
-      );
-
-      let linux_result = linux_resolver.resolve_linux(&LinuxPath::DataHome);
-      assert_eq!(linux_result.unwrap(), PathBuf::from("linux/dataHome"));
-
-      let mac_result = linux_resolver.resolve_mac(&MacPath::ApplicationDirectory);
-      assert_eq!(
-         mac_result.unwrap_err(),
-         Error::IncorrectOS {
-            path: MacPath::ApplicationDirectory.to_string(),
-            current_os: linux_environment.to_string(),
-            expected_os: "macos".to_string(),
-         }
-      );
-
-      let win32_result = linux_resolver.resolve_win32(&Win32Path::LocalAppData);
-      assert_eq!(
-         win32_result.unwrap_err(),
-         Error::IncorrectOS {
-            path: Win32Path::LocalAppData.to_string(),
-            current_os: linux_environment.to_string(),
-            expected_os: ["win32", "winpackaged"].join(", "),
-         }
-      );
-
-      let win_packaged_result =
-         linux_resolver.resolve_windows_application_data(&WindowsApplicationDataPath::LocalFolder);
-      assert_eq!(
-         win_packaged_result.unwrap_err(),
-         Error::IncorrectOS {
-            path: WindowsApplicationDataPath::LocalFolder.to_string(),
-            current_os: linux_environment.to_string(),
-            expected_os: "winpackaged".to_string(),
-         }
-      );
-   }
-
-   #[test]
-   fn macos_environment_rejects_other_environment_paths() {
-      let macos_environment = FsEnvironment::Macos;
-      let macos_resolver = create_test_resolver(FsEnvironment::Macos);
-
-      let android_result = macos_resolver.resolve_android(&AndroidPath::DataDir);
-      assert_eq!(
-         android_result.unwrap_err(),
-         Error::IncorrectOS {
-            path: AndroidPath::DataDir.to_string(),
-            current_os: macos_environment.to_string(),
-            expected_os: "android".to_string(),
-         }
-      );
-
-      let android_collection_result =
-         macos_resolver.resolve_android_path_collection(&AndroidPathCollection::ExternalCacheDirs);
-      assert_eq!(
-         android_collection_result.unwrap_err(),
-         Error::IncorrectOS {
-            path: AndroidPathCollection::ExternalCacheDirs.to_string(),
-            current_os: macos_environment.to_string(),
-            expected_os: "android".to_string(),
-         }
-      );
-
-      let ios_result = macos_resolver.resolve_ios(&IosPath::DocumentDirectory);
-      assert_eq!(
-         ios_result.unwrap_err(),
-         Error::IncorrectOS {
-            path: IosPath::DocumentDirectory.to_string(),
-            current_os: macos_environment.to_string(),
-            expected_os: "ios".to_string(),
-         }
-      );
-
-      let linux_result = macos_resolver.resolve_linux(&LinuxPath::DataHome);
-      assert_eq!(
-         linux_result.unwrap_err(),
-         Error::IncorrectOS {
-            path: LinuxPath::DataHome.to_string(),
-            current_os: macos_environment.to_string(),
-            expected_os: "linux".to_string(),
-         }
-      );
-
-      let mac_result = macos_resolver.resolve_mac(&MacPath::ApplicationDirectory);
-      assert_eq!(
-         mac_result.unwrap(),
-         PathBuf::from("apple/applicationDirectory")
-      );
-
-      let win32_result = macos_resolver.resolve_win32(&Win32Path::LocalAppData);
-      assert_eq!(
-         win32_result.unwrap_err(),
-         Error::IncorrectOS {
-            path: Win32Path::LocalAppData.to_string(),
-            current_os: macos_environment.to_string(),
-            expected_os: ["win32", "winpackaged"].join(", "),
-         }
-      );
-
-      let win_packaged_result =
-         macos_resolver.resolve_windows_application_data(&WindowsApplicationDataPath::LocalFolder);
-      assert_eq!(
-         win_packaged_result.unwrap_err(),
-         Error::IncorrectOS {
-            path: WindowsApplicationDataPath::LocalFolder.to_string(),
-            current_os: macos_environment.to_string(),
-            expected_os: "winpackaged".to_string(),
-         }
-      );
-   }
-
-   #[test]
-   fn win32_environment_rejects_other_environment_paths() {
-      let win32_environment = FsEnvironment::Win32;
-      let win32_resolver = create_test_resolver(FsEnvironment::Win32);
-
-      let android_result = win32_resolver.resolve_android(&AndroidPath::DataDir);
-      assert_eq!(
-         android_result.unwrap_err(),
-         Error::IncorrectOS {
-            path: AndroidPath::DataDir.to_string(),
-            current_os: win32_environment.to_string(),
-            expected_os: "android".to_string(),
-         }
-      );
-
-      let android_collection_result =
-         win32_resolver.resolve_android_path_collection(&AndroidPathCollection::ExternalCacheDirs);
-      assert_eq!(
-         android_collection_result.unwrap_err(),
-         Error::IncorrectOS {
-            path: AndroidPathCollection::ExternalCacheDirs.to_string(),
-            current_os: win32_environment.to_string(),
-            expected_os: "android".to_string(),
-         }
-      );
-
-      let ios_result = win32_resolver.resolve_ios(&IosPath::DocumentDirectory);
-      assert_eq!(
-         ios_result.unwrap_err(),
-         Error::IncorrectOS {
-            path: IosPath::DocumentDirectory.to_string(),
-            current_os: win32_environment.to_string(),
-            expected_os: "ios".to_string(),
-         }
-      );
-
-      let linux_result = win32_resolver.resolve_linux(&LinuxPath::DataHome);
-      assert_eq!(
-         linux_result.unwrap_err(),
-         Error::IncorrectOS {
-            path: LinuxPath::DataHome.to_string(),
-            current_os: win32_environment.to_string(),
-            expected_os: "linux".to_string(),
-         }
-      );
-
-      let mac_result = win32_resolver.resolve_mac(&MacPath::ApplicationDirectory);
-      assert_eq!(
-         mac_result.unwrap_err(),
-         Error::IncorrectOS {
-            path: MacPath::ApplicationDirectory.to_string(),
-            current_os: win32_environment.to_string(),
-            expected_os: "macos".to_string(),
-         }
-      );
-
-      let win32_result = win32_resolver.resolve_win32(&Win32Path::LocalAppData);
-      assert_eq!(win32_result.unwrap(), PathBuf::from("win32/localAppData"));
-
-      let win_packaged_result =
-         win32_resolver.resolve_windows_application_data(&WindowsApplicationDataPath::LocalFolder);
-      assert_eq!(
-         win_packaged_result.unwrap_err(),
-         Error::IncorrectOS {
-            path: WindowsApplicationDataPath::LocalFolder.to_string(),
-            current_os: win32_environment.to_string(),
-            expected_os: "winpackaged".to_string(),
-         }
-      );
-   }
-
-   #[test]
-   fn win_packaged_environment_rejects_other_environment_paths() {
-      let win_packaged_environment = FsEnvironment::WinPackaged;
-      let win_packaged_resolver = create_test_resolver(FsEnvironment::WinPackaged);
-
-      let android_result = win_packaged_resolver.resolve_android(&AndroidPath::DataDir);
-      assert_eq!(
-         android_result.unwrap_err(),
-         Error::IncorrectOS {
-            path: AndroidPath::DataDir.to_string(),
-            current_os: win_packaged_environment.to_string(),
-            expected_os: "android".to_string(),
-         }
-      );
-
-      let android_collection_result = win_packaged_resolver
-         .resolve_android_path_collection(&AndroidPathCollection::ExternalCacheDirs);
-      assert_eq!(
-         android_collection_result.unwrap_err(),
-         Error::IncorrectOS {
-            path: AndroidPathCollection::ExternalCacheDirs.to_string(),
-            current_os: win_packaged_environment.to_string(),
-            expected_os: "android".to_string(),
-         }
-      );
-
-      let ios_result = win_packaged_resolver.resolve_ios(&IosPath::DocumentDirectory);
-      assert_eq!(
-         ios_result.unwrap_err(),
-         Error::IncorrectOS {
-            path: IosPath::DocumentDirectory.to_string(),
-            current_os: win_packaged_environment.to_string(),
-            expected_os: "ios".to_string(),
-         }
-      );
-
-      let linux_result = win_packaged_resolver.resolve_linux(&LinuxPath::DataHome);
-      assert_eq!(
-         linux_result.unwrap_err(),
-         Error::IncorrectOS {
-            path: LinuxPath::DataHome.to_string(),
-            current_os: win_packaged_environment.to_string(),
-            expected_os: "linux".to_string(),
-         }
-      );
-
-      let mac_result = win_packaged_resolver.resolve_mac(&MacPath::ApplicationDirectory);
-      assert_eq!(
-         mac_result.unwrap_err(),
-         Error::IncorrectOS {
-            path: MacPath::ApplicationDirectory.to_string(),
-            current_os: win_packaged_environment.to_string(),
-            expected_os: "macos".to_string(),
-         }
-      );
-
-      // Both Win32 and WinPackaged FsEnvironments can resolve Win32 paths.
-      let win32_result = win_packaged_resolver.resolve_win32(&Win32Path::LocalAppData);
-      assert_eq!(win32_result.unwrap(), PathBuf::from("win32/localAppData"));
-
-      let win_packaged_result = win_packaged_resolver
-         .resolve_windows_application_data(&WindowsApplicationDataPath::LocalFolder);
+   fn resolve_windows_application_data_accepts_win_packaged_environment() {
+      let resolver = create_test_resolver(FsEnvironment::WinPackaged);
+      let result =
+         resolver.resolve_windows_application_data(&WindowsApplicationDataPath::LocalFolder);
 
       assert_eq!(
-         win_packaged_result.unwrap(),
+         result.unwrap(),
          PathBuf::from("windowsApplicationData/localFolder")
       );
    }
 
-   #[test]
-   fn resolve_path_mapping_maps_to_correct_os() {
+   #[rstest]
+   #[case::android(FsEnvironment::Android)]
+   #[case::ios(FsEnvironment::Ios)]
+   #[case::linux(FsEnvironment::Linux)]
+   #[case::macos(FsEnvironment::Macos)]
+   #[case::win32(FsEnvironment::Win32)]
+   fn resolve_windows_application_data_rejects_non_win_packaged_environments(
+      #[case] environment: FsEnvironment,
+   ) {
+      let resolver = create_test_resolver(environment.clone());
+      let result =
+         resolver.resolve_windows_application_data(&WindowsApplicationDataPath::LocalFolder);
+
+      assert_eq!(
+         result.unwrap_err(),
+         Error::IncorrectOS {
+            path: WindowsApplicationDataPath::LocalFolder.to_string(),
+            current_os: environment.to_string(),
+            expected_os: "winpackaged".to_string(),
+         }
+      );
+   }
+
+   #[rstest]
+   #[case::android(FsEnvironment::Android, "android/dataDir")]
+   #[case::ios(FsEnvironment::Ios, "ios/documentDirectory")]
+   #[case::linux(FsEnvironment::Linux, "linux/dataHome")]
+   #[case::macos(FsEnvironment::Macos, "apple/applicationDirectory")]
+   #[case::win32(FsEnvironment::Win32, "win32/localAppData")]
+   #[case::win_packaged(FsEnvironment::WinPackaged, "windowsApplicationData/localFolder")]
+   fn resolve_path_mapping_maps_to_correct_os(
+      #[case] environment: FsEnvironment,
+      #[case] expected: &str,
+   ) {
       let path_mapping = CrossPlatformMapping {
          android: Some(PlatformMapping {
             platform_path: AndroidPath::DataDir,
@@ -751,38 +556,38 @@ mod tests {
          )),
       };
 
-      for environment in ENVIRONMENTS {
-         let resolver = create_test_resolver(environment.clone());
-         let resolved = resolver.resolve_mapping(&path_mapping).unwrap();
+      let resolver = create_test_resolver(environment);
+      let resolved = resolver.resolve_mapping(&path_mapping).unwrap();
 
-         match environment {
-            FsEnvironment::Android => {
-               assert_eq!(resolved, PathBuf::from("android/dataDir"),);
-            }
-            FsEnvironment::Ios => {
-               assert_eq!(resolved, PathBuf::from("ios/documentDirectory"),);
-            }
-            FsEnvironment::Linux => {
-               assert_eq!(resolved, PathBuf::from("linux/dataHome"),);
-            }
-            FsEnvironment::Macos => {
-               assert_eq!(resolved, PathBuf::from("apple/applicationDirectory"),);
-            }
-            FsEnvironment::Win32 => {
-               assert_eq!(resolved, PathBuf::from("win32/localAppData"),);
-            }
-            FsEnvironment::WinPackaged => {
-               assert_eq!(
-                  resolved,
-                  PathBuf::from("windowsApplicationData/localFolder"),
-               );
-            }
-         }
-      }
+      assert_eq!(resolved, PathBuf::from(expected));
    }
 
-   #[test]
-   fn resolve_path_mapping_with_undefined_path_returns_error() {
+   #[rstest]
+   #[case::android(
+      FsEnvironment::Android,
+      Error::PathMappingUndefined(FsEnvironment::Android.to_string())
+   )]
+   #[case::ios(
+      FsEnvironment::Ios,
+      Error::PathMappingUndefined(FsEnvironment::Ios.to_string())
+   )]
+   #[case::linux(
+      FsEnvironment::Linux,
+      Error::PathMappingUndefined(FsEnvironment::Linux.to_string())
+   )]
+   #[case::macos(
+      FsEnvironment::Macos,
+      Error::PathMappingUndefined(FsEnvironment::Macos.to_string())
+   )]
+   #[case::win32(
+      FsEnvironment::Win32,
+      Error::PathMappingUndefined(FsEnvironment::Win32.to_string())
+   )]
+   #[case::win_packaged(FsEnvironment::WinPackaged, Error::WinPackagedPathMappingUndefined)]
+   fn resolve_path_mapping_with_undefined_path_returns_error(
+      #[case] environment: FsEnvironment,
+      #[case] expected: Error,
+   ) {
       let path_mapping = CrossPlatformMapping {
          android: None,
          ios: None,
@@ -792,56 +597,26 @@ mod tests {
          win_packaged: None,
       };
 
-      for environment in ENVIRONMENTS {
-         let resolver = create_test_resolver(environment.clone());
-         let error_str = resolver
-            .resolve_mapping(&path_mapping)
-            .unwrap_err()
-            .to_string();
+      let resolver = create_test_resolver(environment);
+      let error = resolver.resolve_mapping(&path_mapping).unwrap_err();
 
-         match environment {
-            FsEnvironment::Android => {
-               assert_eq!(
-                  error_str,
-                  Error::PathMappingUndefined(FsEnvironment::Android.to_string()).to_string()
-               );
-            }
-            FsEnvironment::Ios => {
-               assert_eq!(
-                  error_str,
-                  Error::PathMappingUndefined(FsEnvironment::Ios.to_string()).to_string()
-               );
-            }
-            FsEnvironment::Linux => {
-               assert_eq!(
-                  error_str,
-                  Error::PathMappingUndefined(FsEnvironment::Linux.to_string()).to_string()
-               );
-            }
-            FsEnvironment::Macos => {
-               assert_eq!(
-                  error_str,
-                  Error::PathMappingUndefined(FsEnvironment::Macos.to_string()).to_string()
-               );
-            }
-            FsEnvironment::Win32 => {
-               assert_eq!(
-                  error_str,
-                  Error::PathMappingUndefined(FsEnvironment::Win32.to_string()).to_string()
-               );
-            }
-            FsEnvironment::WinPackaged => {
-               assert_eq!(
-                  error_str,
-                  Error::WinPackagedPathMappingUndefined.to_string()
-               );
-            }
-         }
-      }
+      assert_eq!(error, expected);
    }
 
-   #[test]
-   fn resolve_path_mapping_with_relative_path_returns_correct_path() {
+   #[rstest]
+   #[case::android(FsEnvironment::Android, "android/dataDir/the/android/path")]
+   #[case::ios(FsEnvironment::Ios, "ios/documentDirectory/the/ios/path")]
+   #[case::linux(FsEnvironment::Linux, "linux/dataHome/the/linux/path")]
+   #[case::macos(FsEnvironment::Macos, "apple/applicationDirectory/the/mac/path")]
+   #[case::win32(FsEnvironment::Win32, "win32/localAppData/the/win32/path")]
+   #[case::win_packaged(
+      FsEnvironment::WinPackaged,
+      "windowsApplicationData/localFolder/the/windowsApplicationData/path"
+   )]
+   fn resolve_path_mapping_with_relative_path_returns_correct_path(
+      #[case] environment: FsEnvironment,
+      #[case] expected: &str,
+   ) {
       let path_mapping = CrossPlatformMapping {
          android: Some(PlatformMapping {
             platform_path: AndroidPath::DataDir,
@@ -871,46 +646,22 @@ mod tests {
          )),
       };
 
-      for environment in ENVIRONMENTS {
-         let resolver = create_test_resolver(environment.clone());
-         let resolved = resolver.resolve_mapping(&path_mapping).unwrap();
+      let resolver = create_test_resolver(environment);
+      let resolved = resolver.resolve_mapping(&path_mapping).unwrap();
 
-         match environment {
-            FsEnvironment::Android => {
-               assert_eq!(resolved, PathBuf::from("android/dataDir/the/android/path"),);
-            }
-            FsEnvironment::Ios => {
-               assert_eq!(
-                  resolved,
-                  PathBuf::from("ios/documentDirectory/the/ios/path"),
-               );
-            }
-            FsEnvironment::Linux => {
-               assert_eq!(resolved, PathBuf::from("linux/dataHome/the/linux/path"),);
-            }
-            FsEnvironment::Macos => {
-               assert_eq!(
-                  resolved,
-                  PathBuf::from("apple/applicationDirectory/the/mac/path"),
-               );
-            }
-            FsEnvironment::Win32 => {
-               assert_eq!(resolved, PathBuf::from("win32/localAppData/the/win32/path"),);
-            }
-            FsEnvironment::WinPackaged => {
-               assert_eq!(
-                  resolved,
-                  PathBuf::from(
-                     "windowsApplicationData/localFolder/the/windowsApplicationData/path"
-                  ),
-               );
-            }
-         }
-      }
+      assert_eq!(resolved, PathBuf::from(expected));
    }
 
-   #[test]
-   fn resolve_path_mapping_with_invalid_relative_path_returns_error() {
+   #[rstest]
+   #[case::android(FsEnvironment::Android)]
+   #[case::ios(FsEnvironment::Ios)]
+   #[case::linux(FsEnvironment::Linux)]
+   #[case::macos(FsEnvironment::Macos)]
+   #[case::win32(FsEnvironment::Win32)]
+   #[case::win_packaged(FsEnvironment::WinPackaged)]
+   fn resolve_path_mapping_with_invalid_relative_path_returns_error(
+      #[case] environment: FsEnvironment,
+   ) {
       let path_mapping = CrossPlatformMapping {
          android: Some(PlatformMapping {
             platform_path: AndroidPath::DataDir,
@@ -940,57 +691,48 @@ mod tests {
          )),
       };
 
-      for environment in ENVIRONMENTS {
-         let resolver = create_test_resolver(environment);
-         let error = resolver.resolve_mapping(&path_mapping).unwrap_err();
-         assert_eq!(
-            error,
-            Error::InvalidPath(
-               "Relative path must contain only normal path segments: ../escape".to_string()
-            )
-         );
-      }
+      let resolver = create_test_resolver(environment);
+      let error = resolver.resolve_mapping(&path_mapping).unwrap_err();
+      assert_eq!(
+         error,
+         Error::InvalidPath(
+            "Relative path must contain only normal path segments: ../escape".to_string()
+         )
+      );
    }
 
-   #[test]
-   fn resolve_path_mapping_with_both_application_data_path_and_win32_path_for_win_packaged_returns_correct_path()
-    {
+   #[rstest]
+   #[case::windows_application_data_path(
+      WinPackagedPathMapping::WindowsApplicationDataPath(PlatformMapping {
+         platform_path: WindowsApplicationDataPath::LocalFolder,
+         relative_path: None,
+      }),
+      "windowsApplicationData/localFolder"
+   )]
+   #[case::win32_path(
+      WinPackagedPathMapping::Win32Path(PlatformMapping {
+         platform_path: Win32Path::LocalAppData,
+         relative_path: None,
+      }),
+      "win32/localAppData"
+   )]
+   fn resolve_path_mapping_for_win_packaged_returns_correct_path(
+      #[case] win_packaged: WinPackagedPathMapping,
+      #[case] expected: &str,
+   ) {
       let resolver = create_test_resolver(FsEnvironment::WinPackaged);
 
-      let mapping_to_app_data = CrossPlatformMapping {
+      let path_mapping = CrossPlatformMapping {
          android: None,
          ios: None,
          linux: None,
          macos: None,
          win32: None,
-         win_packaged: Some(WinPackagedPathMapping::WindowsApplicationDataPath(
-            PlatformMapping {
-               platform_path: WindowsApplicationDataPath::LocalFolder,
-               relative_path: None,
-            },
-         )),
+         win_packaged: Some(win_packaged),
       };
 
-      let app_data_resolved = resolver.resolve_mapping(&mapping_to_app_data).unwrap();
-      assert_eq!(
-         app_data_resolved,
-         PathBuf::from("windowsApplicationData/localFolder")
-      );
-
-      let mapping_to_win32 = CrossPlatformMapping {
-         android: None,
-         ios: None,
-         linux: None,
-         macos: None,
-         win32: None,
-         win_packaged: Some(WinPackagedPathMapping::Win32Path(PlatformMapping {
-            platform_path: Win32Path::LocalAppData,
-            relative_path: None,
-         })),
-      };
-
-      let win32_resolved = resolver.resolve_mapping(&mapping_to_win32).unwrap();
-      assert_eq!(win32_resolved, PathBuf::from("win32/localAppData"));
+      let resolved = resolver.resolve_mapping(&path_mapping).unwrap();
+      assert_eq!(resolved, PathBuf::from(expected));
    }
 
    fn create_test_resolver(environment: FsEnvironment) -> PathResolver {

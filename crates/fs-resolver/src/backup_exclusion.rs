@@ -146,6 +146,8 @@ fn format_ns_error(error: &NSError) -> String {
 // enforcement, and not whether iCloud Backup or Time Machine honours the flag.
 mod tests {
    use super::*;
+   use rstest::rstest;
+   use std::os::unix::ffi::OsStrExt;
    use std::path::PathBuf;
    use std::sync::atomic::{AtomicUsize, Ordering};
 
@@ -234,37 +236,22 @@ mod tests {
    }
 
    #[test]
-   fn all_functions_reject_an_empty_path_instead_of_panicking() {
-      // Without the guard in `file_url` these panic rather than return.
-      let empty = PathBuf::from("");
-
-      for error in [
-         set_excluded_from_backup(&empty, true).unwrap_err(),
-         is_excluded_from_backup(&empty).unwrap_err(),
-      ] {
-         assert!(
-            matches!(&error, Error::InvalidPath(_)),
-            "unexpected error: {error:?}"
-         );
-      }
-   }
-
-   #[test]
-   fn set_excluded_from_backup_rejects_a_path_with_an_interior_nul() {
-      let error = set_excluded_from_backup(&PathBuf::from("/tmp/a\0b"), true).unwrap_err();
+   fn is_excluded_from_backup_rejects_an_empty_path_instead_of_panicking() {
+      // Without the guard in `file_url` this panics rather than returns.
+      let error = is_excluded_from_backup(&PathBuf::from("")).unwrap_err();
       assert!(
          matches!(&error, Error::InvalidPath(_)),
          "unexpected error: {error:?}"
       );
    }
 
-   #[test]
-   fn set_excluded_from_backup_rejects_a_path_that_is_not_utf8() {
-      use std::os::unix::ffi::OsStrExt;
-
+   #[rstest]
+   // Without the guard in `file_url` this panics rather than returns.
+   #[case::empty(PathBuf::from(""))]
+   #[case::interior_nul(PathBuf::from("/tmp/a\0b"))]
+   #[case::not_utf8(PathBuf::from(std::ffi::OsStr::from_bytes(&[0xff, 0xfe])))]
+   fn set_excluded_from_backup_rejects_an_invalid_path(#[case] path: PathBuf) {
       // Rejected before any filesystem access, so no temp directory is needed.
-      let path = PathBuf::from(std::ffi::OsStr::from_bytes(&[0xff, 0xfe]));
-
       let error = set_excluded_from_backup(&path, true).unwrap_err();
       assert!(
          matches!(&error, Error::InvalidPath(_)),

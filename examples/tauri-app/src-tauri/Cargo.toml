@@ -25,5 +25,4 @@ tauri-plugin-os = { version = "2.4.0", features = [] }
 
 [dev-dependencies]
 fs-resolver = { path = "../../../crates/fs-resolver", features = ["test-helpers"] }
-test-case = { version = "3.3.1" }
 

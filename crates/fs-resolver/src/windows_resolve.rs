@@ -376,21 +376,19 @@ fn get_application_data() -> Result<windows::Storage::ApplicationData> {
 mod tests {
 
    use super::*;
+   use rstest::rstest;
 
    const BUNDLE_ID: &str = "com.example.app";
 
-   #[test]
-   fn local_app_data_path_for_current_app_appends_bundle_identifier() {
-      let base = resolve_win32_path(&Win32Path::LocalAppData, "").unwrap();
-      let path = resolve_win32_path(&Win32Path::LocalAppDataForCurrentApp, BUNDLE_ID).unwrap();
-
-      assert_eq!(path, base.join(BUNDLE_ID));
-   }
-
-   #[test]
-   fn roaming_app_data_path_for_current_app_appends_bundle_identifier() {
-      let base = resolve_win32_path(&Win32Path::RoamingAppData, "").unwrap();
-      let path = resolve_win32_path(&Win32Path::RoamingAppDataForCurrentApp, BUNDLE_ID).unwrap();
+   #[rstest]
+   #[case::local_app_data(Win32Path::LocalAppData, Win32Path::LocalAppDataForCurrentApp)]
+   #[case::roaming_app_data(Win32Path::RoamingAppData, Win32Path::RoamingAppDataForCurrentApp)]
+   fn for_current_app_appends_bundle_identifier(
+      #[case] base_path: Win32Path,
+      #[case] app_path: Win32Path,
+   ) {
+      let base = resolve_win32_path(&base_path, "").unwrap();
+      let path = resolve_win32_path(&app_path, BUNDLE_ID).unwrap();
 
       assert_eq!(path, base.join(BUNDLE_ID));
    }

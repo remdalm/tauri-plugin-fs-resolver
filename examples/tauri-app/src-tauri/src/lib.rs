@@ -15,56 +15,77 @@ mod tests {
       Result, Win32Path, WindowsApplicationDataPath,
    };
    use std::path::PathBuf;
-   use test_case::test_case;
 
-   #[test_case(FsEnvironment::Android)]
-   #[test_case(FsEnvironment::Ios)]
-   #[test_case(FsEnvironment::Linux)]
-   #[test_case(FsEnvironment::Macos)]
-   #[test_case(FsEnvironment::Win32)]
-   #[test_case(FsEnvironment::WinPackaged)]
-   fn test_path_resolver(environment: FsEnvironment) {
-      let resolver = create_test_resolver(environment.clone());
+   // Fails to compile when FsEnvironment gets a new variant, as a reminder to add a test
+   // for it below. Nothing checks that the test exists.
+   const _: fn(&FsEnvironment) = |environment| match environment {
+      FsEnvironment::Android
+      | FsEnvironment::Ios
+      | FsEnvironment::Linux
+      | FsEnvironment::Macos
+      | FsEnvironment::Win32
+      | FsEnvironment::WinPackaged => {}
+   };
 
-      match environment {
-         FsEnvironment::Android => {
-            let resolved = resolver.resolve_android(&AndroidPath::DataDir);
-            assert_eq!(resolved.unwrap(), PathBuf::from("android/dataDir"));
-            let resolved =
-               resolver.resolve_android_path_collection(&AndroidPathCollection::ExternalCacheDirs);
-            assert_eq!(
-               resolved.unwrap(),
-               vec![PathBuf::from("android/externalCacheDirs")]
-            );
-         }
-         FsEnvironment::Ios => {
-            let resolved = resolver.resolve_ios(&IosPath::DocumentDirectory);
-            assert_eq!(resolved.unwrap(), PathBuf::from("ios/documentDirectory"));
-         }
-         FsEnvironment::Linux => {
-            let resolved = resolver.resolve_linux(&LinuxPath::DataHome);
-            assert_eq!(resolved.unwrap(), PathBuf::from("linux/dataHome"));
-         }
-         FsEnvironment::Macos => {
-            let resolved = resolver.resolve_mac(&MacPath::ApplicationDirectory);
-            assert_eq!(
-               resolved.unwrap(),
-               PathBuf::from("apple/applicationDirectory")
-            );
-         }
-         FsEnvironment::Win32 => {
-            let resolved = resolver.resolve_win32(&Win32Path::LocalAppData);
-            assert_eq!(resolved.unwrap(), PathBuf::from("win32/localAppData"));
-         }
-         FsEnvironment::WinPackaged => {
-            let resolved =
-               resolver.resolve_windows_application_data(&WindowsApplicationDataPath::LocalFolder);
-            assert_eq!(
-               resolved.unwrap(),
-               PathBuf::from("windowsApplicationData/localFolder")
-            );
-         }
-      }
+   #[test]
+   fn test_path_resolver_android() {
+      let resolver = create_test_resolver(FsEnvironment::Android);
+
+      let resolved = resolver.resolve_android(&AndroidPath::DataDir);
+      assert_eq!(resolved.unwrap(), PathBuf::from("android/dataDir"));
+      let resolved =
+         resolver.resolve_android_path_collection(&AndroidPathCollection::ExternalCacheDirs);
+      assert_eq!(
+         resolved.unwrap(),
+         vec![PathBuf::from("android/externalCacheDirs")]
+      );
+   }
+
+   #[test]
+   fn test_path_resolver_ios() {
+      let resolver = create_test_resolver(FsEnvironment::Ios);
+
+      let resolved = resolver.resolve_ios(&IosPath::DocumentDirectory);
+      assert_eq!(resolved.unwrap(), PathBuf::from("ios/documentDirectory"));
+   }
+
+   #[test]
+   fn test_path_resolver_linux() {
+      let resolver = create_test_resolver(FsEnvironment::Linux);
+
+      let resolved = resolver.resolve_linux(&LinuxPath::DataHome);
+      assert_eq!(resolved.unwrap(), PathBuf::from("linux/dataHome"));
+   }
+
+   #[test]
+   fn test_path_resolver_macos() {
+      let resolver = create_test_resolver(FsEnvironment::Macos);
+
+      let resolved = resolver.resolve_mac(&MacPath::ApplicationDirectory);
+      assert_eq!(
+         resolved.unwrap(),
+         PathBuf::from("apple/applicationDirectory")
+      );
+   }
+
+   #[test]
+   fn test_path_resolver_win32() {
+      let resolver = create_test_resolver(FsEnvironment::Win32);
+
+      let resolved = resolver.resolve_win32(&Win32Path::LocalAppData);
+      assert_eq!(resolved.unwrap(), PathBuf::from("win32/localAppData"));
+   }
+
+   #[test]
+   fn test_path_resolver_win_packaged() {
+      let resolver = create_test_resolver(FsEnvironment::WinPackaged);
+
+      let resolved =
+         resolver.resolve_windows_application_data(&WindowsApplicationDataPath::LocalFolder);
+      assert_eq!(
+         resolved.unwrap(),
+         PathBuf::from("windowsApplicationData/localFolder")
+      );
    }
 
    fn create_test_resolver(environment: FsEnvironment) -> PathResolver {

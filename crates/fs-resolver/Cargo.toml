@@ -46,7 +46,7 @@ windows = {
 }
 
 [dev-dependencies]
-test-case = "3.3.1"
+rstest = { version = "0.28.0", default-features = false }
 
 [features]
 test-helpers = []

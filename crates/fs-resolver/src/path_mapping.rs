@@ -118,44 +118,61 @@ impl PlatformPath for WindowsApplicationDataPath {}
 #[cfg(test)]
 mod tests {
    use super::*;
-   use test_case::test_case;
+   use rstest::rstest;
 
-   #[test_case("data")]
-   #[test_case("the/android/path")]
-   #[test_case("nested/deep/path")]
-   fn validate_relative_path_accepts_normal_segments(segment: &str) {
+   #[rstest]
+   #[case::data("data")]
+   #[case::the_android_path("the/android/path")]
+   #[case::nested_deep_path("nested/deep/path")]
+   fn validate_relative_path_accepts_normal_segments(#[case] segment: &str) {
       validate_relative_path(segment).unwrap();
    }
 
-   #[test_case("" ; "Relative path must not be empty")]
-   #[test_case("." ; "Relative path must not contain current directory segment")]
-   #[test_case(".." ; "Relative path must not contain parent directory segment")]
-   #[test_case("/absolute" ; "Relative path must not contain absolute path")]
-   #[test_case("foo/.." ; "Relative path must not contain parent directory segment after normal segment")]
-   #[test_case("../foo" ; "Relative path must not contain parent directory segment before normal segment")]
-   #[test_case("foo/." ; "Relative path must not contain current directory segment after normal segment")]
-   #[test_case("./foo" ; "Relative path must not contain current directory segment before normal segment")]
-   #[test_case("foo//bar" ; "Relative path must not contain multiple consecutive slashes")]
-   fn validate_relative_path_rejects_invalid_segments(segment: &str) {
-      assert!(
-         validate_relative_path(segment).is_err(),
-         "expected {segment} to be rejected"
+   #[test]
+   fn validate_relative_path_rejects_empty() {
+      assert_eq!(
+         validate_relative_path(""),
+         Err(Error::InvalidPath(
+            "Relative path must not be empty".to_string()
+         ))
       );
    }
 
-   #[test_case("com.example.app")]
-   fn validate_bundle_identifier_accepts_valid_ids(id: &str) {
+   #[rstest]
+   #[case::current_dir(".")]
+   #[case::parent_dir("..")]
+   #[case::absolute_path("/absolute")]
+   #[case::trailing_parent_dir("foo/..")]
+   #[case::leading_parent_dir("../foo")]
+   #[case::trailing_current_dir("foo/.")]
+   #[case::leading_current_dir("./foo")]
+   #[case::consecutive_slashes("foo//bar")]
+   fn validate_relative_path_rejects_invalid_segments(#[case] segment: &str) {
+      assert_eq!(
+         validate_relative_path(segment),
+         Err(Error::InvalidPath(format!(
+            "Relative path must contain only normal path segments: {segment}"
+         )))
+      );
+   }
+
+   #[rstest]
+   #[case::com_example_app("com.example.app")]
+   fn validate_bundle_identifier_accepts_valid_ids(#[case] id: &str) {
       validate_bundle_identifier(id).unwrap();
    }
 
-   #[test_case("" ; "empty")]
-   #[test_case(".." ; "parent segment")]
-   #[test_case("/absolute" ; "absolute path")]
-   #[test_case("com/example" ; "path separator")]
-   fn validate_bundle_identifier_rejects_invalid_ids(id: &str) {
-      assert!(
-         validate_bundle_identifier(id).is_err(),
-         "expected {id} to be rejected"
+   #[rstest]
+   #[case::empty("")]
+   #[case::parent_dir("..")]
+   #[case::absolute_path("/absolute")]
+   #[case::path_separator("com/example")]
+   fn validate_bundle_identifier_rejects_invalid_ids(#[case] id: &str) {
+      assert_eq!(
+         validate_bundle_identifier(id),
+         Err(Error::InvalidPath(format!(
+            "Bundle identifier must be a single safe path segment: {id}"
+         )))
       );
    }
 }
